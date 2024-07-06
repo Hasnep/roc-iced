@@ -26,7 +26,7 @@ jobs:
         with:
           roc-version: nightly
       - name: Install Rust
-        uses: actions/setup-rust@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Build the platform
         run: roc build.roc
       - name: Bundle and release the platform
