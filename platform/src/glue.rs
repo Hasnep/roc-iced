@@ -9,6 +9,54 @@ use roc_std::{RocBox, RocList, RocStr};
 pub struct Button {
     pub content: Element,
     pub on_press: Action<RocBox<c_void>>,
+    pub style: ButtonStyleFn,
+    pub height: Optional<Length>,
+    pub padding: Padding,
+    pub width: Optional<Length>,
+    pub clip: bool,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct ButtonStyle {
+    pub background: Optional<Color>,
+    pub border: Border,
+    pub text_color: Color,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum ButtonStatus {
+    Active,
+    Disabled,
+    Hovered,
+    Pressed,
+}
+
+#[derive(Debug, Clone)]
+#[repr(transparent)]
+pub struct ButtonStyleFn {
+    closure_data: RocBox<c_void>,
+}
+
+impl ButtonStyleFn {
+    pub fn force_thunk(&self, arg0: ButtonStatus) -> Optional<ButtonStyle> {
+        extern "C" {
+            fn roc__mainForHost_4_caller(
+                arg0: *const ButtonStatus,
+                closure_data: *const c_void,
+                output: *mut Optional<ButtonStyle>,
+            );
+        }
+
+        let mut output = core::mem::MaybeUninit::uninit();
+
+        unsafe {
+            roc__mainForHost_4_caller(&arg0, &*self.closure_data, output.as_mut_ptr());
+
+            output.assume_init()
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -46,15 +94,28 @@ pub struct Checkbox {
 }
 
 #[derive(Debug)]
-#[repr(transparent)]
+#[repr(C)]
 pub struct Column {
     pub children: RocList<Element>,
+    pub height: Length,
+    pub max_width: f32,
+    pub padding: Padding,
+    pub spacing: f32,
+    pub width: Length,
+    pub align_items: Alignment,
+    pub clip: bool,
 }
 
 #[derive(Debug)]
-#[repr(transparent)]
+#[repr(C)]
 pub struct Row {
     pub children: RocList<Element>,
+    pub height: Length,
+    pub padding: Padding,
+    pub spacing: f32,
+    pub width: Length,
+    pub align_items: Alignment,
+    pub clip: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Hash)]
@@ -64,7 +125,6 @@ pub enum LengthTag {
     FillPortion = 1,
     Fixed = 2,
     Shrink = 3,
-    Unspecified = 4,
 }
 
 #[derive(Clone, Copy)]
@@ -74,7 +134,6 @@ pub union LengthPayload {
     fill_portion: u16,
     fixed: f32,
     shrink: (),
-    unspecified: (),
 }
 
 #[derive(Clone, Copy)]
@@ -106,10 +165,6 @@ impl fmt::Debug for Length {
                     .debug_tuple("Length::Shrink")
                     .field(&self.payload.shrink)
                     .finish(),
-                Unspecified => f
-                    .debug_tuple("Length::Unspecified")
-                    .field(&self.payload.unspecified)
-                    .finish(),
             }
         }
     }
@@ -131,10 +186,23 @@ impl Length {
 #[repr(C)]
 pub struct Container {
     pub content: Element,
-    pub height: Length,
-    pub width: Length,
-    pub center_x: bool,
-    pub center_y: bool,
+    pub height: Optional<Length>,
+    pub max_height: f32,
+    pub max_width: f32,
+    pub padding: Padding,
+    pub style: ContainerStyle,
+    pub width: Optional<Length>,
+    pub clip: bool,
+    pub horizontal_alignment: HorizontalAlignment,
+    pub vertical_alignment: VerticalAlignment,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct ContainerStyle {
+    pub background: Optional<Color>,
+    pub border: Border,
+    pub text_color: Optional<Color>,
 }
 
 #[derive(Debug)]
@@ -161,12 +229,11 @@ impl TextInputOnInput {
 
         let mut output = core::mem::MaybeUninit::uninit();
 
+        // Roc will decrement
+        let arg = ManuallyDrop::new(RocStr::from(arg0));
+
         unsafe {
-            roc__mainForHost_2_caller(
-                &RocStr::from(arg0),
-                &*self.closure_data,
-                output.as_mut_ptr(),
-            );
+            roc__mainForHost_2_caller(&*arg, &*self.closure_data, output.as_mut_ptr());
 
             output.assume_init()
         }
@@ -378,4 +445,148 @@ impl<T> Drop for Action<T> {
             }
         }
     }
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, PartialOrd)]
+#[repr(C)]
+pub struct Color {
+    pub a: f32,
+    pub b: f32,
+    pub g: f32,
+    pub r: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[repr(u8)]
+pub enum OptionalTag {
+    None = 0,
+    Some = 1,
+}
+
+#[repr(C)]
+pub union OptionalPayload<T> {
+    none: (),
+    some: ManuallyDrop<T>,
+}
+
+#[repr(C)]
+pub struct Optional<T> {
+    pub payload: OptionalPayload<T>,
+    pub tag: OptionalTag,
+}
+
+impl<T: fmt::Debug> fmt::Debug for Optional<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        use OptionalTag::*;
+
+        unsafe {
+            match self.tag {
+                None => "None".fmt(f),
+                Some => f.debug_tuple("Some").field(&self.payload.some).finish(),
+            }
+        }
+    }
+}
+
+impl<T> Drop for Optional<T> {
+    fn drop(&mut self) {
+        use OptionalTag::*;
+
+        unsafe {
+            match self.tag {
+                None => {}
+                Some => ManuallyDrop::drop(&mut self.payload.some),
+            }
+        }
+    }
+}
+
+impl<T> Optional<T> {
+    pub fn as_option(&self) -> Option<&T> {
+        match self.tag {
+            OptionalTag::None => None,
+            OptionalTag::Some => unsafe { Some(&*self.payload.some) },
+        }
+    }
+
+    pub fn into_option(mut self) -> Option<T> {
+        match self.tag {
+            OptionalTag::None => None,
+            OptionalTag::Some => unsafe { Some(ManuallyDrop::take(&mut self.payload.some)) },
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, PartialOrd)]
+#[repr(C)]
+pub struct Border {
+    pub color: Color,
+    pub radius: f32,
+    pub width: f32,
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, PartialOrd)]
+#[repr(C)]
+pub struct Padding {
+    pub bottom: f32,
+    pub left: f32,
+    pub right: f32,
+    pub top: f32,
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, PartialOrd)]
+#[repr(C)]
+pub struct Size {
+    pub height: f32,
+    pub width: f32,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Settings {
+    pub default_text_size: f32,
+    pub window: WindowSettings,
+    pub antialiasing: bool,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct WindowSettings {
+    pub max_size: Optional<Size>,
+    pub min_size: Optional<Size>,
+    pub size: Size,
+    pub decorations: bool,
+    pub resizable: bool,
+    pub transparent: bool,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Init {
+    pub model: RocBox<c_void>,
+    pub settings: Settings,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum Alignment {
+    Center,
+    End,
+    Start,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum VerticalAlignment {
+    Bottom,
+    Center,
+    Top,
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum HorizontalAlignment {
+    Center,
+    Left,
+    Right,
 }

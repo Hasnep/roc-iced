@@ -1,19 +1,20 @@
 module [Element, map]
 
-import Box exposing [box, unbox]
 import Action exposing [Action]
 import Length exposing [Length]
-import Element.Container as Container
+import Element.Button exposing [Button]
+import Element.Column exposing [Column]
 import Element.Container exposing [Container]
+import Element.Row exposing [Row]
 
 Element message : [
     Text Str,
-    Row (List (Element message)),
-    Column (List (Element message)),
+    Row (Row (Element message)),
+    Column (Column (Element message)),
     Container (Container (Element message)),
-    Button { content : Element message, onPress : Action message },
-    Checkbox { label : Str, isChecked : Bool, onToggle : Action (Box (Bool -> message)) },
-    TextInput { value : Str, width : Length, onInput : Action (Box (Str -> message)), onSubmit : Action message },
+    Button (Button (Element message) message),
+    Checkbox { label : Str, isChecked : Bool, onToggle : Action (Bool -> message) },
+    TextInput { value : Str, width : Length, onInput : Action (Str -> message), onSubmit : Action message },
 ]
 
 map : Element a, (a -> b) -> Element b
@@ -24,29 +25,29 @@ map = \elem, mapper ->
         Text s ->
             Text s
 
-        Row children ->
-            Row (List.map children elemMapper)
+        Row { children, spacing, padding, width, height, alignItems, clip } ->
+            Row { children: List.map children elemMapper, spacing, padding, width, height, alignItems, clip }
 
-        Column children ->
-            Column (List.map children elemMapper)
+        Column { children, spacing, padding, width, height, maxWidth, alignItems, clip } ->
+            Column { children: List.map children elemMapper, spacing, padding, width, height, maxWidth, alignItems, clip }
 
-        Container { content, width, height, centerX, centerY } ->
-            Container { content: elemMapper content, width, height, centerX, centerY }
+        Container { content, padding, width, height, maxWidth, maxHeight, horizontalAlignment, verticalAlignment, clip, style } ->
+            Container { content: elemMapper content, padding, width, height, maxWidth, maxHeight, horizontalAlignment, verticalAlignment, clip, style }
 
-        Button { content, onPress } ->
-            Button { content: elemMapper content, onPress: Action.map onPress \a -> mapper a }
+        Button { content, onPress, width, height, padding, clip, style } ->
+            Button { content: elemMapper content, onPress: Action.map onPress \a -> mapper a, width, height, padding, clip, style }
 
         Checkbox { label, isChecked, onToggle } ->
             Checkbox {
                 label,
                 isChecked,
-                onToggle: Action.map onToggle \a -> box (\b -> mapper ((unbox a) b)),
+                onToggle: Action.map onToggle \a -> \b -> mapper (a b),
             }
 
         TextInput { value, width, onInput, onSubmit } ->
             TextInput {
                 value,
                 width,
-                onInput: Action.map onInput \a -> box (\b -> mapper ((unbox a) b)),
+                onInput: Action.map onInput \a -> \b -> mapper (a b),
                 onSubmit: Action.map onSubmit \a -> mapper a,
             }

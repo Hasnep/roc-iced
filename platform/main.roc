@@ -1,29 +1,41 @@
 platform "iced"
     requires { Model, Message } { program : _ }
-    exposes [Action, Length, Element]
+    exposes [
+        Action,
+        Alignment,
+        Border,
+        Color,
+        Element,
+        Length,
+        Option,
+        Padding,
+        Settings,
+    ]
     packages {}
-    imports [Element.{ Element }, Box.{ unbox, box }]
+    imports [PlatformElement.{ PlatformElement }, Settings.{ Settings }, Box.{ unbox, box }]
     provides [mainForHost]
 
 # We box the model before passing to the Host and unbox when passed to Roc
 ProgramForHost : {
-    init : Box Model,
+    init : { model : Box Model, settings : Settings },
     update : Box Model, Box Message -> Box Model,
-    view : Box Model -> Element (Box Message),
+    view : Box Model -> PlatformElement (Box Message),
 }
 
-init : Box Model
-init = box program.init
+init : { model : Box Model, settings : Settings }
+init =
+    program.init
+    |> \{ model, settings ? Settings.default } -> { model: box model, settings }
 
 update : Box Model, Box Message -> Box Model
 update = \model, message ->
     program.update (unbox model) (unbox message)
     |> box
 
-view : Box Model -> Element (Box Message)
+view : Box Model -> PlatformElement (Box Message)
 view = \model ->
     program.view (unbox model)
-    |> Element.map box
+    |> PlatformElement.boxed
 
 mainForHost : ProgramForHost
 mainForHost = { init, update, view }
